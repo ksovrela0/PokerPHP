@@ -1,3 +1,15 @@
+<?php
+session_start();
+$_SESSION['user_id'] = 123;
+
+function generateWsToken($userId, $secret = '599104454') {
+    $signature = hash_hmac('sha256', $userId, $secret);
+    return base64_encode($userId . ':' . $signature);
+}
+
+// Example
+$token = generateWsToken($_SESSION['user_id']);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,8 +31,10 @@
     }
 </style>
 <script>
-    const room = 'room1'; // Could be dynamic
-    const conn = new WebSocket('ws://localhost:8080/?room=' + room);
+    const token = '<?= $token ?>';
+    const room = 'room1';
+
+    const conn = new WebSocket(`ws://localhost:8080/?room=${room}&token=${token}`);
 
     conn.onopen = () => {
         console.log('Connected to room:', room);

@@ -16,9 +16,17 @@ class PokerRooms implements MessageComponentInterface {
         $queryParams = [];
         parse_str($conn->httpRequest->getUri()->getQuery(), $queryParams);
         $room = isset($queryParams['room']) ? $queryParams['room'] : null;
+        $token = $queryParams['token'] ?? null;
 
         if (!$room) {
             $conn->send(json_encode(['error' => 'Missing room parameter']));
+            $conn->close();
+            return;
+        }
+
+        $userId = $this->verifyToken($token, '599104454');
+        if (!$userId) {
+            $conn->send(json_encode(['error' => 'Invalid token']));
             $conn->close();
             return;
         }
@@ -42,7 +50,7 @@ class PokerRooms implements MessageComponentInterface {
         $this->clients->attach($conn);
         $this->rooms[$room][$conn->resourceId] = $conn;
 
-        echo "New connection in room '$room' ({$conn->resourceId})\n";
+        echo "User $userId connected to room '$room' (resId {$conn->resourceId})\n";
 
         $joinMessage = [
             'type' => 'join',
@@ -112,5 +120,18 @@ class PokerRooms implements MessageComponentInterface {
     public function onError(ConnectionInterface $conn, \Exception $e) {
         echo "Error: {$e->getMessage()}\n";
         $conn->close();
+    }
+
+    private function verifyToken($token, $secret) {
+        $decoded = base64_decode($token, true);
+        if (!$decoded) return false;
+
+        [$userId, $signature] = explode(':', $decoded, 2) + [null, null];
+        if (!$userId || !$signature) return false;
+
+        $expectedSig = hash_hmac('sha256', $userId, $secret);
+        if (!hash_equals($expectedSig, $signature)) return false;
+
+        return $userId;
     }
 }

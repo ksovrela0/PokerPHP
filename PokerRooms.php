@@ -148,7 +148,7 @@ class PokerRooms implements MessageComponentInterface {
         return $userId;
     }
     private function startRoomTimer($room) {
-        echo "starting timer";
+        echo "starting timer\r\n";
         $countdown = 10;
 
         $this->roomTimers[$room] = $this->loop->addPeriodicTimer(1, function() use (&$countdown, $room) {
@@ -167,7 +167,7 @@ class PokerRooms implements MessageComponentInterface {
             }
 
             if ($countdown <= 0) {
-                echo "timer stopped 2";
+                echo "timer stopped 2\r\n";
                 $this->stopRoomTimer($room);
                 return;
             }

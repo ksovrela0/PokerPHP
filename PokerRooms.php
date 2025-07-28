@@ -1,13 +1,18 @@
 <?php
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
+use React\EventLoop\LoopInterface;
 require 'Poker.php';
 class PokerRooms implements MessageComponentInterface {
     protected $clients;
     protected $rooms = [];
+    protected $roomTimers = [];
+    private $loop;
 
-    public function __construct() {
+    public function __construct(LoopInterface $loop) {
         $this->clients = new \SplObjectStorage;
+        $this->roomTimers = [];
+        $this->loop = $loop;
         echo "WebSocket Server started...\n";
     }
 
@@ -74,6 +79,10 @@ class PokerRooms implements MessageComponentInterface {
                 $client->send(json_encode($joinMessage));
             }
         }
+
+        if (count($this->rooms[$room]) >= 2 && !isset($this->roomTimers[$room])) {
+            $this->startRoomTimer($room);
+        }
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
@@ -115,6 +124,10 @@ class PokerRooms implements MessageComponentInterface {
         foreach ($this->rooms[$room] as $client) {
             $client->send($leaveMessage);
         }
+
+        if ($room && count($this->rooms[$room]) < 2) {
+            $this->stopRoomTimer($room);
+        }
     }
 
     public function onError(ConnectionInterface $conn, \Exception $e) {
@@ -134,4 +147,42 @@ class PokerRooms implements MessageComponentInterface {
 
         return $userId;
     }
+    private function startRoomTimer($room) {
+        echo "starting timer";
+        $countdown = 10;
+
+        $this->roomTimers[$room] = $this->loop->addPeriodicTimer(1, function() use (&$countdown, $room) {
+            if (!isset($this->rooms[$room]) || count($this->rooms[$room]) < 2) {
+                // Stop if users dropped
+                echo "timer stopped 1";
+                $this->stopRoomTimer($room);
+                return;
+            }
+
+            foreach ($this->rooms[$room] as $client) {
+                $client->send(json_encode([
+                    'type' => 'timer',
+                    'value' => $countdown
+                ]));
+            }
+
+            if ($countdown <= 0) {
+                echo "timer stopped 2";
+                $this->stopRoomTimer($room);
+                return;
+            }
+
+            $countdown--;
+        });
+    }
+    private function stopRoomTimer($room) {
+        if (isset($this->roomTimers[$room])) {
+            $this->loop->cancelTimer($this->roomTimers[$room]);
+            unset($this->roomTimers[$room]);
+        }
+    }
+    public function getLoop() {
+        return $this->loop;
+    }
+
 }

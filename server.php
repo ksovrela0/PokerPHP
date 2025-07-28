@@ -4,16 +4,22 @@ require __DIR__ . '/vendor/autoload.php';
 use Ratchet\Server\IoServer;
 use Ratchet\Http\HttpServer;
 use Ratchet\WebSocket\WsServer;
+use React\EventLoop\Loop;
+use React\Socket\SocketServer;
 
 require 'PokerRooms.php';
 
-$server = IoServer::factory(
+$loop = Loop::get();
+
+$app = new PokerRooms($loop);
+$socket = new SocketServer('0.0.0.0:8080', [], $loop);
+$server = new IoServer(
     new HttpServer(
-        new WsServer(
-            new PokerRooms()
-        )
+        new WsServer($app)
     ),
-    8080 // Port
+    $socket,
+    $loop
 );
 
-$server->run();
+// Start loop (this keeps the server running)
+$loop->run();

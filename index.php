@@ -66,7 +66,7 @@ $token = generateWsToken($_SESSION['user_id']);
         else if(data.type == 'leave') {
             $(".p_player[data-id='"+data.id+"']").remove();
         }
-        else {
+        else if(data.type == 'join') {
             $(".p_table").append(`  <div class="p_player" data-id="`+data.id+`">
                                         <span>Player #`+data.id+`</span>
                                         <div class="p_cards">

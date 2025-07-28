@@ -1,0 +1,116 @@
+<?php
+use Ratchet\MessageComponentInterface;
+use Ratchet\ConnectionInterface;
+require 'Poker.php';
+class PokerRooms implements MessageComponentInterface {
+    protected $clients;
+    protected $rooms = [];
+
+    public function __construct() {
+        $this->clients = new \SplObjectStorage;
+        echo "WebSocket Server started...\n";
+    }
+
+    public function onOpen(ConnectionInterface $conn) {
+        // Expect the room to be provided as a query param: ?room=room1
+        $queryParams = [];
+        parse_str($conn->httpRequest->getUri()->getQuery(), $queryParams);
+        $room = isset($queryParams['room']) ? $queryParams['room'] : null;
+
+        if (!$room) {
+            $conn->send(json_encode(['error' => 'Missing room parameter']));
+            $conn->close();
+            return;
+        }
+
+        // Create the room if not exists
+        if (!isset($this->rooms[$room])) {
+            $this->rooms[$room] = [];
+        }
+
+        // Limit to 9 users
+        if (count($this->rooms[$room]) >= 9) {
+            $conn->send(json_encode(['error' => 'Room full']));
+            $conn->close();
+            return;
+        }
+
+        // Store room info
+        $conn->room = $room;
+
+        // Register connection
+        $this->clients->attach($conn);
+        $this->rooms[$room][$conn->resourceId] = $conn;
+
+        echo "New connection in room '$room' ({$conn->resourceId})\n";
+
+        $joinMessage = [
+            'type' => 'join',
+            'id' => $conn->resourceId,
+            'message' => "User {$conn->resourceId} joined the room",
+            'users_inside' => array()
+        ];
+
+        foreach ($this->rooms[$room] as $client) {
+            //if($client === $conn){
+                $joinMessage['users_inside'][] = $client->resourceId;
+            //}
+        }
+
+        foreach ($this->rooms[$room] as $client) {
+            if ($client !== $conn) {
+                $client->send(json_encode($joinMessage));
+            }
+            else{
+                $joinMessage['type'] = "main_join";
+                $client->send(json_encode($joinMessage));
+            }
+        }
+    }
+
+    public function onMessage(ConnectionInterface $from, $msg) {
+        $room = $from->room ?? null;
+
+        if (!$room || !isset($this->rooms[$room])) {
+            return;
+        }
+
+        foreach ($this->rooms[$room] as $client) {
+            if ($client !== $from) {
+                $client->send($msg);
+            }
+        }
+
+        echo "Room '$room': {$from->resourceId} said: $msg\n";
+    }
+
+    public function onClose(ConnectionInterface $conn) {
+        $room = $conn->room ?? null;
+
+        $this->clients->detach($conn);
+
+        if ($room && isset($this->rooms[$room][$conn->resourceId])) {
+            unset($this->rooms[$room][$conn->resourceId]);
+            if (empty($this->rooms[$room])) {
+                unset($this->rooms[$room]);
+            }
+        }
+
+        echo "Connection {$conn->resourceId} has disconnected from room '$room'\n";
+
+        $leaveMessage = json_encode([
+            'type' => 'leave',
+            'id' => $conn->resourceId,
+            'message' => "User {$conn->resourceId} left the room"
+        ]);
+
+        foreach ($this->rooms[$room] as $client) {
+            $client->send($leaveMessage);
+        }
+    }
+
+    public function onError(ConnectionInterface $conn, \Exception $e) {
+        echo "Error: {$e->getMessage()}\n";
+        $conn->close();
+    }
+}
